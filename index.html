@@ -1,0 +1,525 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=yes">
+  <title>Villa One · Phase Tracker</title>
+  <style>
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+    }
+
+    body {
+      background: #f4f6fa;
+      font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, sans-serif;
+      padding: 2rem 1.5rem;
+      color: #1a2c3e;
+    }
+
+    .container {
+      max-width: 1280px;
+      margin: 0 auto;
+    }
+
+    /* header */
+    .header {
+      margin-bottom: 2.5rem;
+    }
+
+    .header h1 {
+      font-size: 1.8rem;
+      font-weight: 600;
+      letter-spacing: -0.01em;
+      background: linear-gradient(135deg, #1a472a, #2c5a3a);
+      background-clip: text;
+      -webkit-background-clip: text;
+      color: transparent;
+      margin-bottom: 0.25rem;
+    }
+
+    .header p {
+      color: #5b6e7c;
+      font-size: 0.95rem;
+    }
+
+    /* diagram card (minimal, like the image) */
+    .structure-diagram {
+      background: white;
+      border-radius: 28px;
+      box-shadow: 0 8px 20px rgba(0,0,0,0.03), 0 2px 4px rgba(0,0,0,0.05);
+      padding: 1.8rem 1.5rem;
+      margin-bottom: 2.5rem;
+      border: 1px solid #e9edf2;
+    }
+
+    .diagram-title {
+      font-size: 0.75rem;
+      text-transform: uppercase;
+      letter-spacing: 1px;
+      font-weight: 600;
+      color: #8f9eae;
+      margin-bottom: 1.25rem;
+    }
+
+    .flow {
+      display: flex;
+      flex-wrap: wrap;
+      justify-content: center;
+      align-items: stretch;
+      gap: 1.2rem;
+    }
+
+    .node {
+      background: #f8fafd;
+      border-radius: 20px;
+      padding: 1.2rem 1.2rem;
+      flex: 1;
+      min-width: 180px;
+      border: 1px solid #e2e8f0;
+      transition: all 0.1s ease;
+    }
+
+    .node.primary {
+      background: #eef5ec;
+      border-left: 4px solid #2c7a47;
+    }
+
+    .node h3 {
+      font-size: 1rem;
+      font-weight: 600;
+      margin-bottom: 0.5rem;
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+      color: #1e2f3e;
+    }
+
+    .node ul {
+      list-style: none;
+      margin-top: 0.6rem;
+    }
+
+    .node li {
+      font-size: 0.8rem;
+      color: #3e5a6b;
+      margin-bottom: 0.35rem;
+      display: flex;
+      align-items: baseline;
+      gap: 0.4rem;
+    }
+
+    .node li::before {
+      content: "•";
+      color: #2c7a47;
+      font-weight: bold;
+    }
+
+    .badge-tax {
+      background: #e9f0e7;
+      font-size: 0.7rem;
+      padding: 0.2rem 0.5rem;
+      border-radius: 20px;
+      font-weight: 500;
+      color: #1e6b3b;
+      display: inline-block;
+      margin-top: 0.5rem;
+    }
+
+    .arrow-symbol {
+      font-size: 1.8rem;
+      color: #b9cadb;
+      align-self: center;
+      font-weight: 300;
+    }
+
+    /* checklist section */
+    .checklist-section {
+      background: white;
+      border-radius: 28px;
+      border: 1px solid #e9edf2;
+      overflow: hidden;
+      box-shadow: 0 4px 12px rgba(0,0,0,0.02);
+    }
+
+    .section-header {
+      padding: 1.2rem 1.8rem;
+      background: #ffffff;
+      border-bottom: 1px solid #eff2f8;
+      display: flex;
+      justify-content: space-between;
+      align-items: baseline;
+      flex-wrap: wrap;
+      gap: 0.8rem;
+    }
+
+    .section-header h2 {
+      font-size: 1.3rem;
+      font-weight: 600;
+      color: #1f3b4c;
+    }
+
+    .progress-stats {
+      font-size: 0.85rem;
+      background: #f0f3f8;
+      padding: 0.3rem 0.8rem;
+      border-radius: 40px;
+      color: #2c5a6e;
+    }
+
+    .phase-list {
+      padding: 0.2rem 0;
+    }
+
+    .phase-item {
+      display: flex;
+      align-items: flex-start;
+      gap: 1rem;
+      padding: 1rem 1.8rem;
+      border-bottom: 1px solid #f0f2f7;
+      transition: background 0.1s;
+    }
+
+    .phase-item:hover {
+      background: #fefefd;
+    }
+
+    .phase-check {
+      padding-top: 0.1rem;
+    }
+
+    .phase-check input {
+      width: 22px;
+      height: 22px;
+      cursor: pointer;
+      accent-color: #2c7a47;
+    }
+
+    .phase-content {
+      flex: 1;
+    }
+
+    .phase-title {
+      font-weight: 600;
+      font-size: 1rem;
+      color: #1f3b4c;
+      margin-bottom: 0.25rem;
+    }
+
+    .phase-desc {
+      font-size: 0.8rem;
+      color: #6a7f8f;
+      line-height: 1.4;
+    }
+
+    .phase-sub {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 1rem;
+      margin-top: 0.4rem;
+      font-size: 0.7rem;
+      color: #8c9dad;
+    }
+
+    .phase-sub span {
+      background: #f2f5f9;
+      padding: 0.2rem 0.6rem;
+      border-radius: 16px;
+    }
+
+    .reset-button {
+      background: none;
+      border: 1px solid #dce3ec;
+      padding: 0.4rem 1rem;
+      border-radius: 40px;
+      font-size: 0.75rem;
+      color: #5f7f9a;
+      cursor: pointer;
+      transition: all 0.2s;
+    }
+
+    .reset-button:hover {
+      background: #f0f3f8;
+      border-color: #bccbd8;
+    }
+
+    footer {
+      margin-top: 2rem;
+      text-align: center;
+      font-size: 0.7rem;
+      color: #9aafbe;
+      border-top: 1px solid #e6ecf2;
+      padding-top: 1.5rem;
+    }
+
+    @media (max-width: 700px) {
+      body {
+        padding: 1rem;
+      }
+      .flow {
+        flex-direction: column;
+      }
+      .arrow-symbol {
+        transform: rotate(90deg);
+        align-self: center;
+      }
+      .phase-item {
+        padding: 1rem;
+      }
+    }
+  </style>
+</head>
+<body>
+<div class="container">
+  <div class="header">
+    <h1>◊ Villa One · execution roadmap</h1>
+    <p>track every phase — from Nevis LLC to final profit distribution</p>
+  </div>
+
+  <!-- minimal structure diagram (matching the image style) -->
+  <div class="structure-diagram">
+    <div class="diagram-title">ENTITY STRUCTURE (tax-optimised)</div>
+    <div class="flow">
+      <div class="node primary">
+        <h3>🧑‍🌾 YOU</h3>
+        <ul>
+          <li>Dominican citizen</li>
+          <li>Owns Nevis LLC 100%</li>
+          <li>Co‑invests $100k (last in, first out)</li>
+          <li>Manager of Nevis LLC</li>
+        </ul>
+      </div>
+      <div class="arrow-symbol">→</div>
+      <div class="node">
+        <h3>🏛️ NEVIS LLC</h3>
+        <ul>
+          <li>Villa One Holdings LLC</li>
+          <li>0% tax (Nevis)</li>
+          <li>Owns land & villa directly</li>
+          <li>Receives sale proceeds from foreign buyer</li>
+        </ul>
+        <div class="badge-tax">0% corp tax · 0% capital gains</div>
+      </div>
+      <div class="arrow-symbol">⇢</div>
+      <div class="node">
+        <h3>💼 INVESTORS (4)</h3>
+        <ul>
+          <li>$125k each → $500k total</li>
+          <li>First legal charge on villa</li>
+          <li>48% return target ($185k each)</li>
+          <li>Paid first at exit</li>
+        </ul>
+      </div>
+      <div class="arrow-symbol">⚙️</div>
+      <div class="node">
+        <h3>🇩🇲 LOCAL OPS</h3>
+        <ul>
+          <li>Hire workers</li>
+          <li>Buy materials (duty‑free)</li>
+          <li>Apply for Fiscal Incentives</li>
+        </ul>
+        <div class="badge-tax">optional · import savings</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Checklist: tick off each phase -->
+  <div class="checklist-section">
+    <div class="section-header">
+      <h2>✓ Phase-by-phase checklist</h2>
+      <div class="progress-stats" id="progressStats">0 / 12 completed</div>
+    </div>
+    <div class="phase-list" id="phaseList">
+      <!-- phases will be generated via JS for easier maintenance, but I'll embed static with dynamic save -->
+    </div>
+    <div style="padding: 0.8rem 1.8rem 1.5rem 1.8rem; border-top: 1px solid #eff2f8;">
+      <button class="reset-button" id="resetAllBtn">⟳ Reset all ticks</button>
+    </div>
+  </div>
+  <footer>
+    ✅ Ticks are saved automatically in your browser.<br>
+    After each milestone, check the box — progress stays until you reset.
+  </footer>
+</div>
+
+<script>
+  // ---- DEFINITION OF PHASES (clear, actionable, matching the recommended steps) ----
+  const phasesData = [
+    {
+      title: "1. Form Nevis LLC",
+      description: "Choose registered agent (Offshore Nevis / Nevis Corporate Services). File Articles of Organization, sign Operating Agreement.",
+      sub: "Cost ~$1,000-1,500 · 3-5 days"
+    },
+    {
+      title: "2. Open bank account or setup escrow",
+      description: "Open Mercury (US) for Nevis LLC OR appoint Dominican law firm as bonded escrow agent for investor funds.",
+      sub: "Escrow recommended for first project"
+    },
+    {
+      title: "3. Buy land in Nevis LLC name",
+      description: "Dominican lawyer confirms registrar acceptance. Purchase agreement signed as manager of LLC. Pay stamp duty (2-4%), no alien tax.",
+      sub: "Title → Villa One Holdings LLC"
+    },
+    {
+      title: "4. Register first legal charge for investors",
+      description: "File legal charge at Deeds Registry (Roseau). Investors become first-priority claim on villa sale ($740k floor).",
+      sub: "Legal fees ~$1,000-2,000"
+    },
+    {
+      title: "5. Draft investor legal documents (PPM)",
+      description: "Private Placement Memorandum, Subscription Agreement, Co-invest terms (last in first out).",
+      sub: "Securities lawyer ~$3k-5k (one-time)"
+    },
+    {
+      title: "6. Apply for Fiscal Incentives (duty-free imports)",
+      description: "Submit to Invest Dominica Authority for 0% import duties on construction materials. Cabinet approval 6-10 weeks.",
+      sub: "Saves ~20% on materials"
+    },
+    {
+      title: "7. Sign investors & collect funds into escrow",
+      description: "Execute subscription agreements, collect $125k per investor ($500k total) into escrow + your $100k co-invest.",
+      sub: "Total project capital $600k in escrow"
+    },
+    {
+      title: "8. Milestone draws (40/30/30)",
+      description: "Release escrow funds: 40% after land+charge, 30% at slab completion, 30% before interior finish. Uncalled capital stays safe.",
+      sub: "Independent inspector sign-off"
+    },
+    {
+      title: "9. Construction & duty-free material import",
+      description: "Build villa (18-24 months). Hire local workers, buy materials using Fiscal Incentives certificate.",
+      sub: "Contingency: your $100k co-invest (last in, first out)"
+    },
+    {
+      title: "10. Sell villa to foreign UHNWI buyer",
+      description: "Buyer signs purchase agreement with Nevis LLC. Sale proceeds go to Nevis LLC account / escrow.",
+      sub: "Foreign buyer → 0% Dominican sourced income"
+    },
+    {
+      title: "11. Pay investors first (first charge)",
+      description: "$740k distributed to 4 investors ($185k each) — full return of principal + 48% profit.",
+      sub: "Legal priority enforced"
+    },
+    {
+      title: "12. Distribute remaining profit (tax‑free)",
+      description: "Repay your $100k co-invest, then keep ~$360k+ profit in Nevis LLC → distribute to you as member. 0% tax in Nevis & no Dominican tax.",
+      sub: "Net ~$460k total to you (co‑invest + profit)"
+    }
+  ];
+
+  // Storage key
+  const STORAGE_KEY = "villa_one_phase_ticks";
+
+  // Load saved state or initialize empty
+  let tickedState = new Array(phasesData.length).fill(false);
+
+  function loadSavedState() {
+    const saved = localStorage.getItem(STORAGE_KEY);
+    if (saved) {
+      try {
+        const parsed = JSON.parse(saved);
+        if (Array.isArray(parsed) && parsed.length === phasesData.length) {
+          tickedState = parsed;
+        }
+      } catch(e) { console.warn(e); }
+    }
+  }
+
+  function saveState() {
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(tickedState));
+  }
+
+  function updateProgressDisplay() {
+    const completed = tickedState.filter(v => v === true).length;
+    const total = phasesData.length;
+    const percent = Math.round((completed / total) * 100);
+    const statsSpan = document.getElementById("progressStats");
+    if (statsSpan) {
+      statsSpan.innerText = `${completed} / ${total} completed (${percent}%)`;
+    }
+  }
+
+  function renderPhaseList() {
+    const container = document.getElementById("phaseList");
+    if (!container) return;
+    container.innerHTML = "";
+    phasesData.forEach((phase, idx) => {
+      const isChecked = tickedState[idx];
+      const phaseDiv = document.createElement("div");
+      phaseDiv.className = "phase-item";
+      phaseDiv.innerHTML = `
+        <div class="phase-check">
+          <input type="checkbox" data-idx="${idx}" ${isChecked ? "checked" : ""}>
+        </div>
+        <div class="phase-content">
+          <div class="phase-title">${escapeHtml(phase.title)}</div>
+          <div class="phase-desc">${escapeHtml(phase.description)}</div>
+          <div class="phase-sub"><span>${escapeHtml(phase.sub)}</span></div>
+        </div>
+      `;
+      container.appendChild(phaseDiv);
+    });
+
+    // attach event listeners after render
+    document.querySelectorAll('.phase-check input[type="checkbox"]').forEach(checkbox => {
+      checkbox.addEventListener('change', (e) => {
+        const idx = parseInt(e.target.getAttribute('data-idx'), 10);
+        if (!isNaN(idx)) {
+          tickedState[idx] = e.target.checked;
+          saveState();
+          updateProgressDisplay();
+        }
+      });
+    });
+  }
+
+  // simple escape to avoid injection
+  function escapeHtml(str) {
+    return str.replace(/[&<>]/g, function(m) {
+      if (m === '&') return '&amp;';
+      if (m === '<') return '&lt;';
+      if (m === '>') return '&gt;';
+      return m;
+    }).replace(/[\uD800-\uDBFF][\uDC00-\uDFFF]/g, function(c) {
+      return c;
+    });
+  }
+
+  function resetAllTicks() {
+    tickedState = tickedState.map(() => false);
+    saveState();
+    // re-render checkboxes UI
+    const checkboxes = document.querySelectorAll('.phase-check input[type="checkbox"]');
+    checkboxes.forEach((cb, idx) => {
+      cb.checked = false;
+      // also update internal state (already set by map)
+    });
+    // in case of dynamic re-render? we just update the checked property and state
+    // but we already updated tickedState and saved, also we need to sync existing checkboxes
+    for (let i = 0; i < checkboxes.length; i++) {
+      checkboxes[i].checked = false;
+    }
+    updateProgressDisplay();
+  }
+
+  // Additional sync for reset button
+  function bindReset() {
+    const resetBtn = document.getElementById("resetAllBtn");
+    if (resetBtn) {
+      resetBtn.addEventListener("click", () => {
+        resetAllTicks();
+      });
+    }
+  }
+
+  // Initialise
+  loadSavedState();
+  renderPhaseList();
+  updateProgressDisplay();
+  bindReset();
+
+  // optional: small auto-save on window unload is already handled per change
+</script>
+</body>
+</html>
