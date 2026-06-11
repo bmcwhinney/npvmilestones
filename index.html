@@ -497,11 +497,61 @@
   let syncId = null;
   let cloudReady = false;
   let db = null;
-  let saveTimer = null;
 
   function normalizeTicks(raw) {
-    if (!Array.isArray(raw) || raw.length !== phasesData.length) return null;
-    return raw.map(v => v === true);
+    if (raw == null) return null;
+
+    const result = new Array(phasesData.length).fill(false);
+
+    if (Array.isArray(raw)) {
+      for (let i = 0; i < Math.min(raw.length, phasesData.length); i++) {
+        result[i] = raw[i] === true;
+      }
+      return result;
+    }
+
+    if (typeof raw === "object") {
+      let found = false;
+      for (const key of Object.keys(raw)) {
+        const idx = Number(key);
+        if (!Number.isInteger(idx) || idx < 0 || idx >= phasesData.length) continue;
+        result[idx] = raw[key] === true;
+        found = true;
+      }
+      return found ? result : null;
+    }
+
+    return null;
+  }
+
+  function ticksFromCloudData(data) {
+    if (!data) return null;
+
+    if (Array.isArray(data.completed)) {
+      const result = new Array(phasesData.length).fill(false);
+      let found = false;
+      data.completed.forEach((idx) => {
+        const i = Number(idx);
+        if (Number.isInteger(i) && i >= 0 && i < phasesData.length) {
+          result[i] = true;
+          found = true;
+        }
+      });
+      return found ? result : new Array(phasesData.length).fill(false);
+    }
+
+    if (data.ticks) return normalizeTicks(data.ticks);
+    return null;
+  }
+
+  function ticksToCloudPayload() {
+    const completed = tickedState
+      .map((v, i) => (v ? i : null))
+      .filter((i) => i !== null);
+    return {
+      completed,
+      updatedAt: Date.now()
+    };
   }
 
   function loadLocalState() {
@@ -555,35 +605,25 @@
     if (!cloudReady || !syncId) return null;
     const snap = await cloudRef().once("value");
     const data = snap.val();
-    if (!data || !data.ticks) return null;
-    return normalizeTicks(data.ticks);
+    if (!data) return null;
+    return ticksFromCloudData(data);
   }
 
   async function pushCloudState() {
     if (!cloudReady || !syncId) return;
-    await cloudRef().set({
-      ticks: tickedState,
-      updatedAt: Date.now()
-    });
-  }
-
-  function scheduleCloudSave() {
-    if (!cloudReady || !syncId) return;
-    clearTimeout(saveTimer);
-    saveTimer = setTimeout(async () => {
-      try {
-        await pushCloudState();
-        setSyncStatus("Saved to cloud.", "ok");
-      } catch (e) {
-        console.warn(e);
-        setSyncStatus("Could not save to cloud — try again.", "err");
-      }
-    }, 400);
+    await cloudRef().set(ticksToCloudPayload());
   }
 
   async function saveState() {
     saveLocalState();
-    scheduleCloudSave();
+    if (!cloudReady || !syncId) return;
+    try {
+      await pushCloudState();
+      setSyncStatus("Saved to cloud.", "ok");
+    } catch (e) {
+      console.warn(e);
+      setSyncStatus("Could not save to cloud — try again.", "err");
+    }
   }
 
   async function enableSync(code) {
@@ -602,12 +642,21 @@
     try {
       const cloudTicks = await fetchCloudState();
       const localTicks = loadLocalState();
-      if (cloudTicks) {
+      const localHasTicks = localTicks && localTicks.some(Boolean);
+      const cloudHasTicks = cloudTicks && cloudTicks.some(Boolean);
+
+      if (cloudHasTicks) {
+        tickedState = cloudTicks;
+      } else if (localHasTicks) {
+        tickedState = localTicks;
+        await pushCloudState();
+      } else if (cloudTicks) {
         tickedState = cloudTicks;
       } else if (localTicks) {
         tickedState = localTicks;
         await pushCloudState();
       }
+
       saveLocalState();
       renderPhaseList();
       updateProgressDisplay();
@@ -636,12 +685,20 @@
     try {
       const cloudTicks = await fetchCloudState();
       const localTicks = loadLocalState();
-      if (cloudTicks) {
+      const localHasTicks = localTicks && localTicks.some(Boolean);
+      const cloudHasTicks = cloudTicks && cloudTicks.some(Boolean);
+
+      if (cloudHasTicks) {
+        tickedState = cloudTicks;
+      } else if (localHasTicks) {
+        tickedState = localTicks;
+        await pushCloudState();
+      } else if (cloudTicks) {
         tickedState = cloudTicks;
       } else if (localTicks) {
         tickedState = localTicks;
-        await pushCloudState();
       }
+
       saveLocalState();
       setSyncStatus("Cloud sync active — progress survives cache clears.", "ok");
     } catch (e) {
