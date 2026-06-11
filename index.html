@@ -244,6 +244,72 @@
       border-color: #bccbd8;
     }
 
+    .sync-panel {
+      padding: 1rem 1.8rem 1.2rem;
+      border-top: 1px solid #eff2f8;
+      background: #fafbfd;
+    }
+
+    .sync-panel h3 {
+      font-size: 0.85rem;
+      font-weight: 600;
+      color: #1f3b4c;
+      margin-bottom: 0.35rem;
+    }
+
+    .sync-panel p {
+      font-size: 0.75rem;
+      color: #6a7f8f;
+      line-height: 1.45;
+      margin-bottom: 0.75rem;
+    }
+
+    .sync-row {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 0.5rem;
+      align-items: center;
+      margin-bottom: 0.6rem;
+    }
+
+    .sync-input {
+      flex: 1;
+      min-width: 180px;
+      border: 1px solid #dce3ec;
+      border-radius: 12px;
+      padding: 0.45rem 0.75rem;
+      font-size: 0.8rem;
+      color: #1f3b4c;
+      background: white;
+    }
+
+    .sync-button {
+      border: 1px solid #2c7a47;
+      background: #eef5ec;
+      color: #1e6b3b;
+      padding: 0.45rem 0.9rem;
+      border-radius: 12px;
+      font-size: 0.75rem;
+      font-weight: 500;
+      cursor: pointer;
+    }
+
+    .sync-button.secondary {
+      border-color: #dce3ec;
+      background: white;
+      color: #5f7f9a;
+    }
+
+    .sync-status {
+      font-size: 0.72rem;
+      color: #5b6e7c;
+      min-height: 1.1rem;
+    }
+
+    .sync-status.ok { color: #1e6b3b; }
+    .sync-status.warn { color: #9a6b1e; }
+    .sync-status.err { color: #a33; }
+
     footer {
       margin-top: 2rem;
       text-align: center;
@@ -333,16 +399,31 @@
     <div class="phase-list" id="phaseList">
       <!-- phases will be generated via JS for easier maintenance, but I'll embed static with dynamic save -->
     </div>
+    <div class="sync-panel">
+      <h3>☁️ Cloud sync</h3>
+      <p>Set a sync code once — progress is stored online and comes back even after clearing browser data. Use the same code on phone and desktop.</p>
+      <div class="sync-row">
+        <input class="sync-input" id="syncCodeInput" type="password" placeholder="Your private sync code" autocomplete="off">
+        <button class="sync-button" id="enableSyncBtn">Enable sync</button>
+        <button class="sync-button secondary" id="exportBtn">Export backup</button>
+        <button class="sync-button secondary" id="importBtn">Import backup</button>
+        <input type="file" id="importFile" accept="application/json,.json" hidden>
+      </div>
+      <div class="sync-status" id="syncStatus">Loading…</div>
+    </div>
     <div style="padding: 0.8rem 1.8rem 1.5rem 1.8rem; border-top: 1px solid #eff2f8;">
       <button class="reset-button" id="resetAllBtn">⟳ Reset all ticks</button>
     </div>
   </div>
   <footer>
-    ✅ Ticks are saved automatically in your browser.<br>
-    After each milestone, check the box — progress stays until you reset.
+    Progress syncs to the cloud when a sync code is set.<br>
+    Export a backup anytime for an offline copy.
   </footer>
 </div>
 
+<script src="https://www.gstatic.com/firebasejs/10.14.1/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.14.1/firebase-database-compat.js"></script>
+<script src="config.js"></script>
 <script>
   // ---- DEFINITION OF PHASES (clear, actionable, matching the recommended steps) ----
   const phasesData = [
@@ -408,26 +489,222 @@
     }
   ];
 
-  // Storage key
   const STORAGE_KEY = "villa_one_phase_ticks";
+  const SYNC_CODE_KEY = "villa_one_sync_code";
+  const SYNC_ID_KEY = "villa_one_sync_id";
 
-  // Load saved state or initialize empty
   let tickedState = new Array(phasesData.length).fill(false);
+  let syncId = null;
+  let cloudReady = false;
+  let db = null;
+  let saveTimer = null;
 
-  function loadSavedState() {
+  function normalizeTicks(raw) {
+    if (!Array.isArray(raw) || raw.length !== phasesData.length) return null;
+    return raw.map(v => v === true);
+  }
+
+  function loadLocalState() {
     const saved = localStorage.getItem(STORAGE_KEY);
-    if (saved) {
-      try {
-        const parsed = JSON.parse(saved);
-        if (Array.isArray(parsed) && parsed.length === phasesData.length) {
-          tickedState = parsed;
-        }
-      } catch(e) { console.warn(e); }
+    if (!saved) return null;
+    try {
+      return normalizeTicks(JSON.parse(saved));
+    } catch (e) {
+      console.warn(e);
+      return null;
     }
   }
 
-  function saveState() {
+  function saveLocalState() {
     localStorage.setItem(STORAGE_KEY, JSON.stringify(tickedState));
+  }
+
+  async function hashSyncCode(code) {
+    const data = new TextEncoder().encode(code.trim());
+    const digest = await crypto.subtle.digest("SHA-256", data);
+    return Array.from(new Uint8Array(digest))
+      .map(b => b.toString(16).padStart(2, "0"))
+      .join("");
+  }
+
+  function setSyncStatus(message, tone) {
+    const el = document.getElementById("syncStatus");
+    if (!el) return;
+    el.textContent = message;
+    el.className = "sync-status" + (tone ? " " + tone : "");
+  }
+
+  function initCloud() {
+    if (typeof FIREBASE_CONFIG === "undefined" || !FIREBASE_CONFIG?.apiKey) {
+      setSyncStatus("Cloud sync not configured yet — export/import still works.", "warn");
+      return false;
+    }
+    if (!firebase.apps.length) {
+      firebase.initializeApp(FIREBASE_CONFIG);
+    }
+    db = firebase.database();
+    cloudReady = true;
+    return true;
+  }
+
+  function cloudRef() {
+    return db.ref("milestones/" + syncId);
+  }
+
+  async function fetchCloudState() {
+    if (!cloudReady || !syncId) return null;
+    const snap = await cloudRef().once("value");
+    const data = snap.val();
+    if (!data || !data.ticks) return null;
+    return normalizeTicks(data.ticks);
+  }
+
+  async function pushCloudState() {
+    if (!cloudReady || !syncId) return;
+    await cloudRef().set({
+      ticks: tickedState,
+      updatedAt: Date.now()
+    });
+  }
+
+  function scheduleCloudSave() {
+    if (!cloudReady || !syncId) return;
+    clearTimeout(saveTimer);
+    saveTimer = setTimeout(async () => {
+      try {
+        await pushCloudState();
+        setSyncStatus("Saved to cloud.", "ok");
+      } catch (e) {
+        console.warn(e);
+        setSyncStatus("Could not save to cloud — try again.", "err");
+      }
+    }, 400);
+  }
+
+  async function saveState() {
+    saveLocalState();
+    scheduleCloudSave();
+  }
+
+  async function enableSync(code) {
+    const trimmed = code.trim();
+    if (trimmed.length < 4) {
+      setSyncStatus("Sync code must be at least 4 characters.", "warn");
+      return;
+    }
+    if (!initCloud()) return;
+
+    syncId = await hashSyncCode(trimmed);
+    localStorage.setItem(SYNC_CODE_KEY, trimmed);
+    localStorage.setItem(SYNC_ID_KEY, syncId);
+
+    setSyncStatus("Loading from cloud…", "");
+    try {
+      const cloudTicks = await fetchCloudState();
+      const localTicks = loadLocalState();
+      if (cloudTicks) {
+        tickedState = cloudTicks;
+      } else if (localTicks) {
+        tickedState = localTicks;
+        await pushCloudState();
+      }
+      saveLocalState();
+      renderPhaseList();
+      updateProgressDisplay();
+      setSyncStatus("Cloud sync active — progress survives cache clears.", "ok");
+    } catch (e) {
+      console.warn(e);
+      setSyncStatus("Could not reach cloud. Check Firebase setup.", "err");
+    }
+  }
+
+  async function restoreSyncSession() {
+    syncId = localStorage.getItem(SYNC_ID_KEY);
+    const savedCode = localStorage.getItem(SYNC_CODE_KEY);
+    const input = document.getElementById("syncCodeInput");
+    if (input && savedCode) input.value = savedCode;
+
+    if (!syncId || !savedCode) {
+      if (initCloud()) {
+        setSyncStatus("Enter a sync code to save progress online.", "");
+      }
+      return;
+    }
+    if (!initCloud()) return;
+
+    setSyncStatus("Restoring from cloud…", "");
+    try {
+      const cloudTicks = await fetchCloudState();
+      const localTicks = loadLocalState();
+      if (cloudTicks) {
+        tickedState = cloudTicks;
+      } else if (localTicks) {
+        tickedState = localTicks;
+        await pushCloudState();
+      }
+      saveLocalState();
+      setSyncStatus("Cloud sync active — progress survives cache clears.", "ok");
+    } catch (e) {
+      console.warn(e);
+      const localTicks = loadLocalState();
+      if (localTicks) tickedState = localTicks;
+      setSyncStatus("Offline — using local copy until cloud reconnects.", "warn");
+    }
+  }
+
+  function exportBackup() {
+    const payload = {
+      version: 1,
+      exportedAt: new Date().toISOString(),
+      ticks: tickedState
+    };
+    const blob = new Blob([JSON.stringify(payload, null, 2)], { type: "application/json" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = "villa-one-progress.json";
+    a.click();
+    URL.revokeObjectURL(url);
+    setSyncStatus("Backup downloaded.", "ok");
+  }
+
+  function importBackup(file) {
+    const reader = new FileReader();
+    reader.onload = async () => {
+      try {
+        const parsed = JSON.parse(reader.result);
+        const ticks = normalizeTicks(parsed.ticks ?? parsed);
+        if (!ticks) throw new Error("Invalid backup");
+        tickedState = ticks;
+        await saveState();
+        renderPhaseList();
+        updateProgressDisplay();
+        setSyncStatus("Backup imported.", "ok");
+      } catch (e) {
+        console.warn(e);
+        setSyncStatus("Could not read that backup file.", "err");
+      }
+    };
+    reader.readAsText(file);
+  }
+
+  function bindSyncControls() {
+    document.getElementById("enableSyncBtn")?.addEventListener("click", () => {
+      const input = document.getElementById("syncCodeInput");
+      enableSync(input?.value || "");
+    });
+    document.getElementById("syncCodeInput")?.addEventListener("keydown", (e) => {
+      if (e.key === "Enter") enableSync(e.target.value || "");
+    });
+    document.getElementById("exportBtn")?.addEventListener("click", exportBackup);
+    document.getElementById("importBtn")?.addEventListener("click", () => {
+      document.getElementById("importFile")?.click();
+    });
+    document.getElementById("importFile")?.addEventListener("change", (e) => {
+      const file = e.target.files?.[0];
+      if (file) importBackup(file);
+      e.target.value = "";
+    });
   }
 
   function updateProgressDisplay() {
@@ -486,9 +763,9 @@
     });
   }
 
-  function resetAllTicks() {
+  async function resetAllTicks() {
     tickedState = tickedState.map(() => false);
-    saveState();
+    await saveState();
     // re-render checkboxes UI
     const checkboxes = document.querySelectorAll('.phase-check input[type="checkbox"]');
     checkboxes.forEach((cb, idx) => {
@@ -513,13 +790,19 @@
     }
   }
 
-  // Initialise
-  loadSavedState();
-  renderPhaseList();
-  updateProgressDisplay();
-  bindReset();
+  async function init() {
+    const localTicks = loadLocalState();
+    if (localTicks) tickedState = localTicks;
+    renderPhaseList();
+    updateProgressDisplay();
+    bindReset();
+    bindSyncControls();
+    await restoreSyncSession();
+    if (syncId) renderPhaseList();
+    updateProgressDisplay();
+  }
 
-  // optional: small auto-save on window unload is already handled per change
+  init();
 </script>
 </body>
 </html>
